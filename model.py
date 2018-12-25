@@ -48,7 +48,7 @@ def u_net(patches, reuse=False):
         return predict_label
  
 def classifier(x_in, reuse=False):
-    with tf.variable_scope('clssify_L', reuse=False):
+    with tf.variable_scope('clssify_L', reuse=reuse):
         conv1 = slim.conv2d(x_in, 32, 4)
         conv2 = slim.conv2d(conv1, 64, 4, stride=2)
         conv3 = slim.conv2d(conv2, 128, 4, stride=2)
@@ -58,7 +58,7 @@ def classifier(x_in, reuse=False):
         return fn
 
 def class_ori(x_in, reuse=False):
-    with tf.variable_scope('clssify_ori', reuse=False):
+    with tf.variable_scope('clssify_ori', reuse=reuse):
         conv1 = slim.conv2d(x_in, 32, 4)
         conv2 = slim.conv2d(conv1, 64, 4, stride=2)
         conv3 = slim.conv2d(conv2, 128, 4, stride=2)

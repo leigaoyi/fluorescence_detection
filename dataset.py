@@ -7,7 +7,7 @@ Created on Sat Dec 15 20:40:41 2018
 
 import numpy as np
 import imageio
-from skimage import transform, color
+from skimage import transform, color, exposure, io
 from tqdm import tqdm
 from opt import elastic_transform
 #==============save crop figs=====
@@ -48,22 +48,59 @@ from opt import elastic_transform
 #imageio.imsave('./data/blue_cell_mask.jpg', fig*fig_mask)   
         
 #=========convert fig into 灰度图 and elastic it
-test_path = './data/anotate_2.jpg'
-fig = imageio.imread(test_path)[3000:4200, 3000:4200, :]
-green_mean = np.mean(fig[..., 1])
-green_std = np.std(fig[..., 1])
-fig_green = fig[..., 1]
-green_max = np.max(fig_green)
-green_min = np.min(fig_green)
-fig_green = (fig_green - green_min)/(green_max-green_min)
-test_mean = np.mean(fig_green)
-test_std = np.std(fig_green)
+test_path = './data/anotate_green_1.jpg'
+anotate_path = './data/anotate_model.jpg'
+fig = imageio.imread(test_path)[2500:3500, 2000:4000, :]
+#anotate = imageio.imread(anotate_path)[4000:2700, 4500:6500, :]
 
 fig_label = np.zeros_like(fig[..., 1])
+green_fig = fig[..., 1]
+mean_green = np.mean(green_fig)
+std_green = np.std(green_fig)
+gam = 4/(1+np.exp(-0.35*(std_green-20))) + 1
+
+if mean_green > 75 or std_green>20 :
+    new_fig = exposure.adjust_gamma(fig, gamma=gam)#图像变暗
+else :
+    new_fig = np.asarray(fig)
+    
+light_green = np.asarray(new_fig)
+light_mean = np.mean(light_green[..., 1])
+light_max = np.max(light_green[..., 1])
+large_pixel_list = []
 for i in range(fig.shape[0]):
     for j in range(fig.shape[1]):
-        if fig_green[i, j] - test_mean > 10*test_std:
+        if light_green[i, j, 1] > light_mean:
+            large_pixel_list.append(light_green[i, j, 1])
+
+distance = np.mean([np.mean(large_pixel_list), np.median(large_pixel_list)])
+
+if std_green<20 and mean_green>75: #去底色
+    for i in range(fig.shape[0]):
+        for j in range(fig.shape[1]):
+            pixel_green = light_green[i, j, 1]
+            light_green[i, j, 1] = pixel_green*(1/(1+np.exp(-(pixel_green-distance)/10)))
+
+    
+mean_light = np.mean(light_green[..., 1])   
+std_light = np.std(light_green[..., 1])
+
+green_choose = mean_light + 3*std_light
+
+imageio.imsave('./data/test_light.jpg', light_green)
+print('distance ', distance)
+print(gam)
+print('ori mean ',mean_green)
+print('ori std ', std_green)
+print('light mean ', light_mean)
+print(std_green)
+for i in range(fig.shape[0]):
+    for j in range(fig.shape[1]):
+        #if int(light_green[i, j, 1]) - int(light_green[i, j, 2]) > green_sheld:
+        if int(light_green[i, j, 1]) > green_choose:
             fig_label[i, j] = 1
 #fig_rotate = transform.rotate(fig, 45)
-imageio.imsave('./data/test_crop.jpg', fig)            
-imageio.imsave('./data/test_rlabel.jpg', 255*fig_label)
+io.imsave('./data/test_crop.jpg', fig)        
+io.imsave('./data/test_new_fig.jpg', new_fig)    
+io.imsave('./data/test_rlabel.jpg', 255*fig_label)
+#imageio.imsave('./data/test_anotate.jpg', anotate)

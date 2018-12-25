@@ -12,79 +12,102 @@ record shows 1800 epochs have nice performance
 import imageio
 import numpy as np
 from tqdm import tqdm
-from skimage import transform, measure, color
+from skimage import transform, measure, color, exposure, io
 import glob
 import tensorflow as tf
 from model import classifier, class_ori
+import os
 
 
-fig_path = './data/anotate_3.jpg'
+fig_path = './data/anotate_green_3.jpg'
 tmp_path = './data/tmp/'
-ckpt_path = './checkpoints/cell_1800.ckpt'
-label_count = 'day_19'
-fig = imageio.imread(fig_path)#[3000:4200, 3000:4200, :]
+check_path = './data/check/'
+ckpt_path = './checkpoints/cell_200.ckpt'
+label_count = 'aq_22'
+fig = imageio.imread(fig_path)#[2700:3500, 4500:4900, :]
 imageio.imsave('./data/test_crop_ori.jpg', fig)
 fig_w = fig.shape[0]
 fig_h = fig.shape[1]
-windows_size = 150
+windows_size = 400
 w_count = fig_w//windows_size
 h_count = fig_h//windows_size
 
-#fig[100:125, 100:102, 0] = 255
-#fig[100:102, 100:125, 0] = 255
-#fig[125:127, 100:125, 0] = 255
-#fig[100:125, 125:127, 0] = 255
-#imageio.imsave('./data/anotate_test.jpg', fig)
+anotate_path = './result/anotate_figs/'
+process_dir = './data/process/'
+#label_count = 'aq_22'
 
-#for fig_name in fig_path_list[2:]:
-
-
+if not os.path.exists(anotate_path):
+    os.makedirs(anotate_path)
+if not os.path.exists(check_path):
+    os.makedirs(check_path)
+if not os.path.exists(tmp_path):
+    os.makedirs(tmp_path)
+if not os.path.exists(process_dir):
+    os.makedirs(process_dir)    
 
 def seg_crop_green(input_crop):
-    green_fig = np.zeros_like(input_crop[..., 0])
+    '''
+    first reduce the green area according to its distribution
+    second enhance the green part by using non-linear function
+    '''
+    green_label = np.zeros_like(input_crop[..., 0])
     h, w, _ = input_crop.shape
-    green_slice = input_crop[..., 1]
-    slice_max = np.max(green_slice)
-    slice_min = np.min(green_slice)
-    standard_crop = (green_slice - slice_min)/(slice_max - slice_min)
-    mean = np.mean(standard_crop)
-    std = np.std(standard_crop)
-    if np.mean(green_slice) > 70 and np.mean(green_slice)<100 :        
-        alpha = 3.0
-    elif np.mean(green_slice) > 100:
-        alpha = 3.5
-    elif np.mean(green_slice)<70 and std < 0.18 :
-        alpha = 5.0
+    std_crop = np.std(input_crop[..., 1])
+    mean_crop = np.mean(input_crop[..., 1])
+    crop_gamma = 4/(1+np.exp(-0.35*(std_crop-20))) + 1 #=================self
+    if mean_crop>75 or std_crop>20 :#调节亮暗
+        enhance_fig = exposure.adjust_gamma(input_crop, gamma=crop_gamma)
     else :
-        alpha = 2.5
+        enhance_fig = np.asanyarray(input_crop)
     #print('alpha', alpha)    
+    large_pixel_list = []
+    mean_enhance = np.mean(enhance_fig[..., 1])
+    for i in range(h):#取底色
+        for j in range(w):
+            if enhance_fig[i, j, 1] > mean_enhance:
+                large_pixel_list.append(enhance_fig[i, j, 1])
+    base_color = (np.mean(large_pixel_list)+np.median(large_pixel_list))/2            
+    if mean_crop>75 and std_crop<20:#去底色
+        for i in range(h):
+            for j in range(w):
+                pixel_green = enhance_fig[i, j, 1]#===================self
+                enhance_fig[i, j, 1] = (1/(1+np.exp(-(pixel_green-base_color)/10)))*pixel_green            
+    
+    mean_enhance = np.mean(enhance_fig[..., 1])
+    std_enhance = np.std(enhance_fig[..., 1])
+    green_value = mean_enhance + 3*std_enhance
+    
     for i in range(h):
         for j in range(w):
-            if standard_crop[i, j] - mean > (alpha * std) and (int(input_crop[i, j, 1]) - int(input_crop[i, j, 2])) > 40:
-                green_fig[i, j] = 1
+            if  int(enhance_fig[i, j, 1])> green_value:
+                green_label[i, j] = 1
             # green 40, 90(liquid); blue 50 , 90(liquid)
-    return green_fig    
-
-
-
+    return green_label, enhance_fig
 
 label_fig = np.zeros_like(fig[..., 0])
+new_fig = np.zeros_like(fig)
 
 for i in tqdm(range(w_count)):
     for j in range(h_count):
-        label_fig[i*windows_size:(i+1)*windows_size, j*windows_size:(j+1)*windows_size] = seg_crop_green(fig[i*windows_size:(i+1)*windows_size, j*windows_size:(j+1)*windows_size, :])
+        label_fig[i*windows_size:(i+1)*windows_size, j*windows_size:(j+1)*windows_size], gam = seg_crop_green(fig[i*windows_size:(i+1)*windows_size, j*windows_size:(j+1)*windows_size, :])
+        new_fig[i*windows_size:(i+1)*windows_size, j*windows_size:(j+1)*windows_size, :] = gam   
 if h_count*windows_size<fig_h:
     for i in range(w_count):
-        label_fig[i*windows_size:(i+1)*windows_size, h_count*windows_size:] = seg_crop_green(fig[i*windows_size:(i+1)*windows_size, h_count*windows_size:, :])        
+        label_fig[i*windows_size:(i+1)*windows_size, h_count*windows_size:], gam = seg_crop_green(fig[i*windows_size:(i+1)*windows_size, h_count*windows_size:, :])        
+        new_fig[i*windows_size:(i+1)*windows_size, h_count*windows_size:, :]= gam
+
 if w_count*windows_size<fig_w:
     for j in range(h_count):
-        label_fig[w_count*windows_size:, j*windows_size:(j+1)*windows_size] = seg_crop_green(fig[w_count*windows_size:, j*windows_size:(j+1)*windows_size, :])
+        label_fig[w_count*windows_size:, j*windows_size:(j+1)*windows_size], gam = seg_crop_green(fig[w_count*windows_size:, j*windows_size:(j+1)*windows_size, :])
+        new_fig[w_count*windows_size:, j*windows_size:(j+1)*windows_size, :] = gam
+
 if  h_count*windows_size<fig_h and w_count*windows_size<fig_w:       
-        label_fig[w_count*windows_size:,h_count*windows_size:] = seg_crop_green(fig[w_count*windows_size:,h_count*windows_size:, :])    
+        label_fig[w_count*windows_size:,h_count*windows_size:], gam = seg_crop_green(fig[w_count*windows_size:,h_count*windows_size:, :])    
+        new_fig[w_count*windows_size:,h_count*windows_size:, :] = gam
 
-
-imageio.imsave('./data/anotate_label.jpg', 255*label_fig)   
-
+fig_name = os.path.basename(fig_path)
+io.imsave('./data/anotate_label.jpg', 255*label_fig)   
+io.imsave(process_dir+fig_name, new_fig)
 ##===============point list============
 label_path_list = ['./data/anotate_label.jpg']
 
@@ -94,15 +117,12 @@ for label_name in label_path_list:
     fig_label = imageio.imread(label_name)
 
     contours = measure.find_contours(fig_label, 0.5)
-    
-    #fig, (ax0,ax1) = plt.subplots(1,2,figsize=(20,20))
-    #ax0.imshow(fig_label,plt.cm.gray)
-    #ax1.imshow(fig_label,plt.cm.gray)
+
     count = 0
     container_point_list = []
     task = 'label'
     cell_area = 175
-    predict_area = 81
+    predict_area = 45
     for contour in contours:
         row_list = contour[:, 0]
         h_min = np.min(row_list)
@@ -123,13 +143,14 @@ for label_name in label_path_list:
                 count += 1    
                 container_point_list.append([int((h_min+h_max)/2), int((w_min+w_max)/2)])   
     count_a = 0
-    fig_data = fig
+    fig_data = new_fig
     for i in container_point_list:
         #print('1')
         h, w = int(i[0]), int(i[1])
         if (h-16)>0 and (h+16)<fig_w and (w-16)>0 and (w+16)<fig_h: 
             crop_fig = fig_data[(h-16):(h+16), (w-16):(w+16), :]
             crop_fig = transform.resize(crop_fig, [64, 64, 3])
+            
             imageio.imsave(tmp_path+'{0}_{1}.jpg'.format(label_count,count_a), crop_fig)
             count_a += 1   
             point_list.append(i)
@@ -168,6 +189,18 @@ for i in tqdm(range(check_num)):
         check_right_list.append(check_point_list[i])
         
 np.savetxt('./data/anotate.txt', check_right_list)
+#===========store the right pathes chosen by network==========
+count_a = 0
+for i in check_right_list:
+    #print('1')
+    h, w = int(i[0]), int(i[1])
+    if (h-16)>0 and (h+16)<fig_w and (w-16)>0 and (w+16)<fig_h: 
+        crop_fig = fig_data[(h-16):(h+16), (w-16):(w+16), :]
+        crop_fig = transform.resize(crop_fig, [64, 64, 3])
+       
+        imageio.imsave(check_path+'{0}_{1}.jpg'.format(label_count,count_a), crop_fig)
+        count_a += 1   
+        point_list.append(i)    
 #===========anatate on the fig==========
 for i in check_right_list :
     h, w = i
@@ -176,5 +209,7 @@ for i in check_right_list :
     fig[(h+12):(h+14), (w-14):(w+14), 0] = 255   
     fig[(h-14):(h+14), (w-14):(w-12), 0] = 255
     fig[(h-14):(h+14), (w+12):(w+14), 0] = 255
+count_a = 0    
+
     
-imageio.imsave('./data/anatate_model.jpg', fig)    
+imageio.imsave('./data/anotate_model.jpg', fig)    

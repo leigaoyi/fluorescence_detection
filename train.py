@@ -18,15 +18,21 @@ from opt import elastic_transform
 
 fig_path = './data/train/'
 check_dir = './checkpoints/'
+result_dir = './result/'
+test_path = './data/test/'
 batch_size = 5
-epoch = 4000
+epoch = 400
 
 fig_data = []
 fig_ori_data = []
 label_data = []
+test_fig_data = []
+test_label_data = []
 
 if not os.path.exists(check_dir):
     os.makedirs(check_dir)
+if not os.path.exists(result_dir):
+    os.makedirs(result_dir)    
 
 for i in range(3):
     fig_path_list = glob.glob(fig_path+str(i)+'/*.jpg')
@@ -36,6 +42,13 @@ for i in range(3):
         fig_L = color.rgb2grey(fig)
         fig_data.append(fig_L)
         label_data.append(i)
+        
+for i in range(3):
+    fig_path_list = glob.glob(test_path+str(i)+'/*.jpg')        
+    for j in fig_path_list:
+        test_fig = imageio.imread(j)
+        test_fig_data.append(test_fig)
+        test_label_data.append(i)
         
 data_num = len(fig_data)        
 shuffle = [i for i in range(data_num)] 
@@ -56,9 +69,14 @@ batch_idx = data_num // batch_size
 x_node = tf.placeholder(tf.float32, [batch_size, 64, 64, 1])
 x_ori_node = tf.placeholder(tf.float32, [batch_size, 64, 64, 3])
 y_node = tf.placeholder(tf.int32, [batch_size])
+x_check_node = tf.placeholder(tf.float32, [1, 64, 64, 3])
 
 y_predict = classifier(x_node)
-y_ori_predict = class_ori(x_ori_node)
+y_ori_predict = class_ori(x_ori_node, reuse=False)
+
+y_check = class_ori(x_check_node, reuse=True) # every epoch , check the accuracy
+y_check_list = []
+
 loss_convert = tf.losses.sparse_softmax_cross_entropy(labels=y_node, logits=y_predict)
 loss_ori = tf.losses.sparse_softmax_cross_entropy(labels=y_node, logits=y_ori_predict)
 loss = loss_convert+ loss_ori
@@ -77,7 +95,7 @@ sess = tf.Session()
 sess.run(init)
 saver = tf.train.Saver(max_to_keep=10)
 #===============strat train=============
-for i in range(epoch):
+for i in tqdm(range(epoch)):
     np.random.shuffle(shuffle)
     
     for j in range(batch_idx):
@@ -106,10 +124,46 @@ for i in range(epoch):
         feed_dict = {x_node:train_data_batch, y_node:train_label_batch,
                      x_ori_node: ori_data_batch}
         #============run optimization==========
-        sess.run(opt_train, feed_dict=feed_dict)
+        #sess.run(opt_train, feed_dict=feed_dict)
         sess.run(opt_ori, feed_dict=feed_dict)
         loss_ori_val = sess.run(loss_ori, feed_dict=feed_dict)
         convert_loss_val = sess.run(loss_convert, feed_dict=feed_dict)
-    print('epoch {0} ori loss {1:.4f} convert loss {2:.4f}'.format(i, loss_ori_val, convert_loss_val))
+    
     if (i+1)%100 == 0 :
         saver.save(sess, check_dir+'cell_{0}.ckpt'.format(i+1))
+        
+#=========================check train every epoch=========================
+    network_result = []
+    test_network_result = []
+    for v in fig_ori_data:
+        mean_v = np.mean(v)
+        std_v = np.std(v)
+        v_single = (v-mean_v)/std_v
+        v_single = np.reshape(v_single, [1, 64, 64, 3])
+        feed_dict = {x_check_node : v_single}
+        single_test = sess.run(y_check, feed_dict=feed_dict)
+        network_result.append(int(np.argmax(single_test, axis=1)))
+    for v in test_fig_data:
+        mean_v = np.mean(v)
+        std_v = np.std(v)
+        v_single = (v-mean_v)/std_v
+        v_single = np.reshape(v_single, [1, 64, 64, 3])
+        feed_dict = {x_check_node : v_single}
+        single_test = sess.run(y_check, feed_dict=feed_dict)
+        test_network_result.append(int(np.argmax(single_test, axis=1)))
+    acc = 0
+    test_acc = 0
+    for v in range(len(network_result)):
+        if network_result[v] == label_data[v]:
+            acc += 1
+    for v in range(len(test_network_result)):
+        if test_network_result[v] == test_label_data[v] :
+            test_acc += 1
+    epoch_acc = acc/len(network_result)  
+    epoch_test_acc = test_acc/len(test_network_result)
+    y_check_list.append(epoch_acc)
+    print('epoch {0} ori loss {1:.4f}, acc {2:.3f} test acc {3:.3f}'.format(i, loss_ori_val, epoch_acc, epoch_test_acc))
+    if (i+1)%50 == 0:
+        print('epoch ', i+1, ' acc {0:.3f} ;test acc {1:.3f}'.format(y_check_list[-1], epoch_test_acc))
+        np.savetxt(result_dir+'/accuracy_train.txt', y_check_list)    
+print('acc highest in {} epoch'.format(y_check_list.index(np.max(y_check_list))))
