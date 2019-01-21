@@ -11,7 +11,7 @@ from tqdm import tqdm
 from skimage import transform, measure, color, exposure
 import glob
 import tensorflow as tf
-from model import classifier, class_ori
+from model import classifier, class_ori, classifier_v2
 import os
 
 
@@ -34,7 +34,7 @@ if not os.path.exists(process_dir):
     
     
 x_node = tf.placeholder(tf.float32, [1, 64, 64, 3])
-y_predict = class_ori(x_node)    
+y_predict = classifier_v2(x_node)    
 
 sess_build = tf.Session()
 sess_build.run(tf.global_variables_initializer())

@@ -20,8 +20,7 @@ import os
 
 
 #fig_path = './data/anotate_sample.jpg'
-dir_path = './data/trainset_2/'
-tmp_fig_name = 'b'
+dir_path = './data/tmp_set/'
 tmp_path = './data/tmp/'
 check_path = './data/check/'
 ckpt_path = './checkpoints/cell_200.ckpt'
@@ -112,43 +111,8 @@ def process_single_fig(fig_path, label_count):
             label_fig[w_count*windows_size:,h_count*windows_size:], gam = seg_crop_green(fig[w_count*windows_size:,h_count*windows_size:, :])    
             new_fig[w_count*windows_size:,h_count*windows_size:, :] = gam
 
-    point_list = []
     io.imsave(process_dir+fig_name, new_fig)
-#    contours = measure.find_contours(label_fig, 0.5)
-#    
-#    count = 0
-#    container_point_list = []
-#    task = 'label'
-##    cell_area = 175
-#    predict_area = 81
-#    for contour in contours:
-#        row_list = contour[:, 0]
-#        h_min = np.min(row_list)
-#        h_max = np.max(row_list)
-#        
-#        col_list = contour[:, 1]
-#        w_min = np.min(col_list)
-#        w_max = np.max(col_list)
-#        # cell 180, predict 512
-#        if task == 'label' :
-#            if ((h_max-h_min)*(w_max-w_min)) > predict_area  :  
-#                count += 1    
-#                container_point_list.append([int((h_min+h_max)/2), int((w_min+w_max)/2)])   
-#        count_a = 0
-#        fig_data = new_fig
-#        for i in container_point_list:
-#            #print('1')
-#            h, w = int(i[0]), int(i[1])
-#            if (h-16)>0 and (h+16)<fig_w and (w-16)>0 and (w+16)<fig_h: 
-#                crop_fig = fig_data[(h-16):(h+16), (w-16):(w+16), :]
-#                crop_fig = transform.resize(crop_fig, [64, 64, 3])
-#                try :
-#                    io.imsave(tmp_path+tmp_fig_name+'{0}_{1}.jpg'.format(label_count,count_a), crop_fig)
-#                    count_a += 1   
-#                    point_list.append(i)
-#                except :
-#                    print('error occuar')
-#                    continue        
+  
     return 0
 #====================begin dir processing===========
 dir_file_names = glob.glob(dir_path+'*')
@@ -159,6 +123,6 @@ for i in dir_file_names:
         file_names.append(j)
 print('amount of figures ', len(file_names))
 for i in range(len(file_names)):
-    print('running file ', i)
+    print('running file ', i+1)
     a = process_single_fig(file_names[i], str(i))        
     

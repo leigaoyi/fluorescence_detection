@@ -11,33 +11,45 @@ from skimage import io, measure, transform
 from tqdm import tqdm
 import glob
 
-pre_process_dir = './data/pre_process_1/*.jpg'
+pre_process_dir = './data/pre_process_3/*.jpg'
 pre_process_paths = glob.glob(pre_process_dir)
 
 store_path = './data/tmp/'
-label_count = 'a'
+label_dir = './data/labels/'
+label_count = 'bz'
 
 window_size = 400
-predict_area = 50
+predict_area = 80
 
 if not os.path.exists(store_path):
     os.makedirs(store_path)
-fig_count = 15
-for fig_name in pre_process_paths[15:]:
+if not os.path.exists(label_dir):
+    os.makedirs(label_dir)    
+    
+fig_count = 31
+for fig_name in pre_process_paths:
     fig_read = io.imread(fig_name)
-    h, w = fig_read.shape[0], fig_read.shape[1]
-    
-    mean_fig = np.mean(fig_read[..., 1])
-    std_fig = np.std(fig_read[..., 1])
-    
+    fig_base_name = os.path.basename(fig_name)
+    h, w = fig_read.shape[0], fig_read.shape[1]  
     label_fig = np.zeros_like(fig_read[..., 1])
-    print(fig_name)
-    for row_pixel in tqdm(range(h)):
-        for col_pixel in range(w):
-            if fig_read[row_pixel, col_pixel, 1] - mean_fig > 3*std_fig:
-                label_fig[row_pixel, col_pixel] = 1
                 
-    contours = measure.find_contours(label_fig, 0.5)
+    h_count = h//window_size
+    w_count = w//window_size
+    
+    for i in tqdm(range(h_count)):
+        for j in range(w_count):
+            crop_fig = fig_read[i*window_size:(i+1)*window_size, j*window_size:(j+1)*window_size, :]
+            mean_crop = np.mean(crop_fig[..., 1])
+            std_crop = np.std(crop_fig[..., 1])
+            
+            for row_crop in range(window_size):
+                for col_crop in range(window_size):
+                    if crop_fig[row_crop, col_crop, 1] - mean_crop > 3*std_crop and int(crop_fig[row_crop, col_crop, 1])>int(crop_fig[row_crop, col_crop, 2])+10:
+                        label_fig[i*window_size+row_crop, j*window_size+col_crop] = 1
+                           
+    io.imsave(label_dir+fig_base_name, 255*label_fig)
+    label_read = io.imread(label_dir + fig_base_name)
+    contours = measure.find_contours(label_read, 0.5)
     container_point_list = []
     print('finish counters')
     for contour in contours:

@@ -47,15 +47,34 @@ def u_net(patches, reuse=False):
         
         return predict_label
  
-def classifier(x_in, reuse=False):
-    with tf.variable_scope('clssify_L', reuse=reuse):
-        conv1 = slim.conv2d(x_in, 32, 4)
-        conv2 = slim.conv2d(conv1, 64, 4, stride=2)
-        conv3 = slim.conv2d(conv2, 128, 4, stride=2)
-        reshape = tf.reshape(conv3, [conv3.shape[0].value, -1])
+    
+def classifier_v2(x_in, name='classify_v2',reuse=False):
+    with tf.variable_scope(name, reuse=reuse):
+        conv1 = slim.conv2d(x_in, 32, 3, rate=2)
+        down1 = slim.conv2d(conv1, 64, 3, stride=2)
+        conv2 = slim.conv2d(down1, 64, 3, rate=2)
+        conv2 = slim.conv2d(conv2, 128, 3, rate=2)
         
+        concat1 = tf.concat([conv2, down1], axis=3)
+        down2 = slim.conv2d(concat1, 128, 3, stride=2)
+        conv3 = slim.conv2d(down2, 128, 3, rate=2)
+        conv3 = slim.conv2d(conv3, 256, 3, rate=2)
+
+        
+        concat2 = tf.concat([conv3, down2], axis=3)
+        down3 = slim.conv2d(concat2, 128, 3, stride=2)        
+        conv4 = slim.conv2d(down3, 128, 3, rate=2)
+        conv4 = slim.conv2d(conv4, 64, 3, rate=2)
+        
+        concat3 = tf.concat([conv4, down3], axis=3)
+        conv = slim.conv2d(concat3, 32, 1)
+        reshape = tf.reshape(conv, [conv.shape[0].value, -1])
         fn = slim.fully_connected(reshape, 3, activation_fn=None)
-        return fn
+        #fn = tf.layers.dense(reshape, 3)
+        return fn     
+       
+        
+    
 
 def class_ori(x_in, reuse=False):
     with tf.variable_scope('clssify_ori', reuse=reuse):
@@ -68,7 +87,8 @@ def class_ori(x_in, reuse=False):
         return fn        
     
 if __name__ == '__main__':    
-    x = tf.placeholder(tf.float32, [1, 512, 512, 3])        
-    y = u_net(x)
+    x = tf.placeholder(tf.float32, [20, 64, 64, 3])        
+    y1 = classifier_v2(x)
+    y = y1 
     print(y.shape)
         

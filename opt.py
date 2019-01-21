@@ -4,69 +4,30 @@ Created on Mon Dec 17 17:05:30 2018
 
 @author: kasy
 """
+from skimage.filters import gaussian
+from skimage.exposure import rescale_intensity
+from skimage import io, transform
+from skimage.util import random_noise
 import numpy as np
-import time
-from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage.interpolation import map_coordinates
 
 # elastic_transform
-def elastic_transform(x, alpha, sigma, mode="constant", cval=0, is_random=False):
-    """Elastic transformation for image as described in `[Simard2003] <http://deeplearning.cs.cmu.edu/pdfs/Simard.pdf>`__.
 
-    Parameters
-    -----------
-    x : numpy.array
-        A greyscale image.
-    alpha : float
-        Alpha value for elastic transformation.
-    sigma : float or sequence of float
-        The smaller the sigma, the more transformation. Standard deviation for Gaussian kernel. The standard deviations of the Gaussian filter are given for each axis as a sequence, or as a single number, in which case it is equal for all axes.
-    mode : str
-        See `scipy.ndimage.filters.gaussian_filter <https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.filters.gaussian_filter.html>`__. Default is `constant`.
-    cval : float,
-        Used in conjunction with `mode` of `constant`, the value outside the image boundaries.
-    is_random : boolean
-        Default is False.
-
-    Returns
-    -------
-    numpy.array
-        A processed image.
-
-    Examples
-    ---------
-    >>> x = tl.prepro.elastic_transform(x, alpha=x.shape[1]*3, sigma=x.shape[1]*0.07)
-
-    References
-    ------------
-    - `Github <https://gist.github.com/chsasank/4d8f68caf01f041a6453e67fb30f8f5a>`__.
-    - `Kaggle <https://www.kaggle.com/pscion/ultrasound-nerve-segmentation/elastic-transform-for-data-augmentation-0878921a>`__
-
-    """
-    if is_random is False:
-        random_state = np.random.RandomState(None)
-    else:
-        random_state = np.random.RandomState(int(time.time()))
-    #
-    is_3d = False
-    if len(x.shape) == 3 and x.shape[-1] == 1:
-        x = x[:, :, 0]
-        is_3d = True
-    elif len(x.shape) == 3 and x.shape[-1] != 1:
-        raise Exception("Only support greyscale image")
-
-    if len(x.shape) != 2:
-        raise AssertionError("input should be grey-scale image")
-
-    shape = x.shape
-
-    dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode=mode, cval=cval) * alpha
-    dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode=mode, cval=cval) * alpha
-
-    x_, y_ = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), indexing='ij')
-    indices = np.reshape(x_ + dx, (-1, 1)), np.reshape(y_ + dy, (-1, 1))
-    if is_3d:
-        return map_coordinates(x, indices, order=1).reshape((shape[0], shape[1], 1))
-    else:
-        return map_coordinates(x, indices, order=1).reshape(shape)
+#def gauss_process(img, sigma=0):
+#        is_colour = len(img.shape)==3
+#        sigma_ = np.random.random()*sigma
+#        img = random_noise(img)
+#        img = transform.rotate(img, 90*np.random.randint(0, 4))
+#        return rescale_intensity(gaussian(img, sigma=sigma_, multichannel=is_colour))
     
+def noise_add(img):
+    img = transform.rotate(img, 90*np.random.randint(0, 4))
+    #img = random_noise(img, mode='poisson')
+    return img    
+    
+def zoom(img):
+    zoom_size = np.random.randint(60, img.shape[0])
+    row_index = np.random.randint(0, img.shape[0]-zoom_size)
+    col_index = np.random.randint(0, img.shape[0]-zoom_size)
+    crop_fig = img[row_index:(row_index+zoom_size), col_index:(col_index+zoom_size), :]
+    resize_fig = transform.resize(crop_fig, [64, 64, 3], mode='reflect')
+    return resize_fig 
